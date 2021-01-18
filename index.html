@@ -30,10 +30,24 @@
 
     header h1 {
         text-transform: uppercase;
+        display: flex;
+        align-items: center;
     }
 
     header h1::first-letter {
         font-size: 120%;
+    }
+
+    #help-button {
+        width: 30px;
+        height: 30px;
+        border-radius: 15px;
+        font-weight: bold;
+        text-align: center;
+        margin-left: 10px;
+        border: 2px solid #666;
+        outline: none;
+        font-size: 16px;
     }
 
     #filter-container {
@@ -122,12 +136,57 @@
     .sunburst-viz text .text-contour {
         stroke-linejoin: round !important;
     }
+
+    #help-container {
+        position: absolute;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        opacity: 1;
+        transition: opacity ease-in-out 0.2s;
+    }
+
+    #help-container:not(.visible) {
+        opacity: 0;
+        pointer-events: none;
+    }
+
+    #help-modal {
+        position: absolute;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        background-color: rgba(0, 0, 0, 0.2);
+        z-index: 0;
+    }
+
+    #help {
+        background-color: #f0f0f0;
+        border-radius: 20px;
+        width: 950px;
+        box-shadow: rgba(0, 0, 0, 0.2) 5px 5px 20px;
+        padding: 10px 20px;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        justify-content: center;
+        z-index: 1;
+    }
+
+    #help > *:not(:last-child){
+        margin-bottom: 0;
+    }
     </style>
 </head>
 <body>
 
     <header>
-        <h1>Diff Tree Sunburst</h1>
+        <h1>Diff Tree Sunburst <button id="help-button">?</button></h1>
         <div id="filter-container">
             <input id="filter-input" type="text" disabled/>
             <button id="filter-button" disabled>→</button>
@@ -139,6 +198,45 @@
     </header>
     <ul id="breadcrumb"></ul>
     <div id="sunburst"></div>
+    <div id="help-container" class="visible">
+        <div id="help-modal"></div>
+        <div id="help">
+            <h1>What is this?</h1>
+            <p>
+                This tool helps you visualise the differences between two Git trees in a more graphical way.
+                It uses the output of <code>git-diff-tree</code> to display a sunburst graph showing you which folders have the most changes.
+            </p>
+            <h1>How does it work?</h1>
+            <p>
+                Open a terminal and type the following command in the directory of your versionned project
+            </p>
+            <pre><code>git diff-tree --name-only -r &lt;branch-name&gt; &lt;branch-name&gt; &gt; diff.txt</code></pre>
+            <p>
+                This command will save the content of the <a href="https://git-scm.com/docs/git-diff-tree">git diff-tree</a> in the file called diff.txt
+            </p>
+            <p>
+                Then, click on the <i>Upload file</i> button of this page and provide the diff.txt file. The Javascript code will interpret it without saving it anywhere on the web.
+            </p>
+            <p>
+                The input field at the top of the page allows you to filter the output. For now, it only supports <a href="https://en.wikipedia.org/wiki/Regular_expression">Regular Expressions</a>.
+                If you want to filter by extension, type <code>\.extension$</code> where <code>extension</code> is the extension of the file you want to filter against.
+            </p>
+            <p>
+                Once the <a href="https://datavizcatalogue.com/methods/sunburst_diagram.html">sunburst graph</a> has appeared, you can navigate through the hierarchy by clicking on the various categories to access the sub folders. Click on the middle of the graph or on the breadcrumb in the top-left corner of the window to move up in the hierarchy.
+            </p>
+            <h1>Disclaimer</h1>
+            <p>
+                The tool is not really error-proof so bear with it!
+            </p>
+            <h1>Credits</h1>
+            <p>
+                Developed by <a href="mailto:valentin.chareyre@fortitudegames.co.uk">Valentin Chareyre</a>
+            </p>
+            <p>
+                Sunburst library by <a href="https://github.com/vasturiano">Vasco Asturiano</a>
+            </p>
+        </div>
+    </div>
     <!-- https://github.com/vasturiano/sunburst-chart -->
     <script src="https://unpkg.com/sunburst-chart"></script>
     <script>
@@ -149,6 +247,7 @@
         {
             addUploadInputListener();
             addFilterListener();
+            addHelpListener();
         })();
 
         function addUploadInputListener()
@@ -337,6 +436,17 @@
                 ? diff.filter(line => regexp.test(line))
                 : diff;
             parseDiffFile(filteredDiff);
+        }
+
+        function addHelpListener()
+        {
+            let visibleClass  = "visible";
+            let helpContainer = document.getElementById("help-container");
+            let helpModal     = document.getElementById("help-modal");
+            let helpButton    = document.getElementById("help-button");
+
+            helpModal.addEventListener("click", event => helpContainer.classList.remove(visibleClass));
+            helpButton.addEventListener("click", event => helpContainer.classList.add(visibleClass));
         }
     </script>
 </body>
