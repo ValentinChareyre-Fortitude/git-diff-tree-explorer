@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+    body {
+        font-family: 'Poppins';
+        height: 100vh;
+        width: 100vw;
+        display: flex;
+        flex-direction: column;
+        margin: 0;
+        padding: 10px 30px;
+        background-color: #f0f0f0;
+        box-sizing: border-box;
+        overflow: hidden;
+    }
+
+    header {
+        display: flex;
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: #ddd solid 2px;
+    }
+
+    header > *:not(:last-child){
+        margin-right: 20px;
+    }
+
+    header h1 {
+        text-transform: uppercase;
+    }
+
+    header h1::first-letter {
+        font-size: 120%;
+    }
+
+    #filter-container {
+        position: relative;
+    }
+
+    #filter-container input {
+        border: 1px solid #666;
+        height: 25px;
+        width: 300px;
+        border-radius: 10px;
+    }
+
+    #filter-container input:disabled, #filter-container button:disabled {
+        border-color: #aaa;
+        color: #aaa
+    }
+
+    #filter-container button {
+        position: absolute;
+        right: 5px;
+        border: none;
+        background-color: transparent;
+        font-family: monospace;
+        height: 100%;
+        color: #666;
+    }
+
+    #filter-container button:not(:disabled) {
+        cursor: pointer;
+    }
+
+    #filter-container input, #filter-container button:focus {
+        outline: none;
+    }
+
+    .button {
+        position: relative;
+        border: #333333 solid 2px;
+        border-radius: 10px;
+        padding: 10px 20px;
+    }
+
+    #upload-container input {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        opacity: 0;
+        top: 0;
+        left: 0;
+    }
+
+    #breadcrumb {
+        height: 25px;
+        min-height: 25px;
+        margin: 5px 0;
+        padding: 0;
+        list-style: none;
+        display: flex;
+        flex-direction: row-reverse;
+        justify-content: flex-end;
+    }
+
+    #breadcrumb > * {
+        text-shadow:
+           -1px -1px 0 #fff,  
+            1px -1px 0 #fff,
+           -1px 1px 0 #fff,
+            1px 1px 0 #fff;
+        padding: 2px 10px;
+        position: relative;
+        margin: 0 10px;
+        cursor: pointer;
+    }
+
+    #breadcrumb > *:not(:first-child):after {
+        content: "/";
+        position: absolute;
+        right: -12px;
+    }
+
+    #sunburst {
+        flex: 1 1 auto;
+    }
+
+    .sunburst-viz text .text-contour {
+        stroke-linejoin: round !important;
+    }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Diff Tree Sunburst</h1>
+        <div id="filter-container">
+            <input id="filter-input" type="text" disabled/>
+            <button id="filter-button" disabled>→</button>
+        </div>
+        <div id="upload-container" class="button">
+            <span>Upload file</span>
+            <input type="file" accept=".txt"/>
+        </div>
+    </header>
+    <ul id="breadcrumb"></ul>
+    <div id="sunburst"></div>
+    <!-- https://github.com/vasturiano/sunburst-chart -->
+    <script src="https://unpkg.com/sunburst-chart"></script>
+    <script>
+        const sunburst = Sunburst();
+        let diff = null;
+
+        (function()
+        {
+            addUploadInputListener();
+            addFilterListener();
+        })();
+
+        function addUploadInputListener()
+        {
+            const fileSelector = document.querySelector('input[type="file"]');
+            fileSelector.addEventListener('change', (event) =>
+            {
+                const fileList = event.target.files;
+                if(fileList.length > 0 && fileList[0].type.indexOf('text') >= 0)
+                {
+                    readTextFile(fileList[0]);
+                }
+            });
+        }
+
+        function readTextFile(file)
+        {
+            const reader = new FileReader();
+            reader.addEventListener('load', (event) =>
+            {
+                diff = event.target.result.split('\n');
+                parseDiffFile(diff);
+                document.querySelectorAll('#filter-container input, #filter-container button').forEach(value => value.disabled = false);
+            });
+            reader.readAsText(file);
+        }
+
+        function parseDiffFile(diff)
+        {
+            let tree = buildTree(diff);
+            colorTree(tree, 0, 360)
+            const sunburstContainer = document.getElementById("sunburst");
+            const breadcrumb = document.getElementById("breadcrumb");
+            clearChildren(sunburstContainer)
+
+            //const colors = ["f94144","f3722c","f8961e","f9844a","f9c74f","90be6d","43aa8b","4d908e","577590","277da1"]
+            let a = sunburst
+                .data(tree)
+                .excludeRoot(true)
+                .label(element => element.name + "(" + element.value + " files)")
+                .tooltipTitle((element, metaData) =>
+                {
+                    let title = metaData.data.name;
+                    for(let i = 0 ; i < 3 && metaData.parent != null && (typeof metaData.parent !== "undefined") && (metaData.parent.data.name + title).length < 60; ++i)
+                    {
+                        title = metaData.parent.data.name + " → " + title;
+                        metaData = metaData.parent;
+                    }
+                    return title;
+                })
+                .tooltipContent(element => element.value + " files")
+                .onClick(node => onNodeClicked(node, sunburst, breadcrumb))
+                .color((element, metaData) => element.color)
+                .maxLevels(5)
+                .width(sunburstContainer.offsetWidth)
+                .height(sunburstContainer.offsetHeight)
+                (sunburstContainer);
+
+            onNodeClicked(tree, sunburst, breadcrumb);
+        }
+
+        function buildTree(diff)
+        {
+            let tree = { name: "Project", children: [], color: "transparent" };
+            for(let lineIndex = 0 ; lineIndex < diff.length ; ++lineIndex)
+            {
+                let node = tree;
+                let fileSystemEntries = diff[lineIndex].split('/');
+
+                for(let entryIndex = 0 ; entryIndex < fileSystemEntries.length ; ++entryIndex)
+                {
+                    let child = node.children.find((c) => c.name == fileSystemEntries[entryIndex]);
+                    if(typeof child === 'undefined')
+                    {
+                        child = { name: fileSystemEntries[entryIndex], children: [], value: 0, parent: node, depth: entryIndex, color: "transparent" };
+                        node.children.push(child);
+                    }
+                    child.value++;
+                    node = child;
+                }
+            }
+            tree.value = tree.children.reduce((sum, element) => sum + element.value, 0)
+            return tree;
+        }
+
+        function colorTree(tree, minHue, maxHue)
+        {
+            let childCount = tree.children.length;
+            let childMinHue = minHue;
+            for(let i = 0 ; i < childCount ; ++i)
+            {
+                let child = tree.children[i];
+                let childMaxHue = lerp(minHue, maxHue, child.value / tree.value);
+                let hue = (childMinHue + childMaxHue) * 0.5;
+                childMinHue += hue;
+                child.color = `hsl(${hue}, 65%, 50%)`;
+                colorTree(child, childMinHue, childMaxHue);
+            }
+        }
+
+        function clearChildren(node)
+        {
+            while(node.lastElementChild)
+            {
+                node.removeChild(node.lastElementChild);
+            }
+        }
+
+        function lerp(a, b, t)
+        {
+            t = t < 0 ? 0 : t > 1 ? 1 : t
+            return a + (b - a) * t;
+        }
+
+        function onNodeClicked(node, sunburst, breadcrumb)
+        {
+            if(node == null)
+            {
+                clearBreadcrumb(breadcrumb);
+            }
+            else
+            {
+                fillBreadcrumb(node, sunburst, breadcrumb);
+            }
+
+            return sunburst.focusOnNode(node);
+        }
+
+        function clearBreadcrumb(breadcrumb)
+        {
+            for (let child of breadcrumb.children)
+            {
+                child.style.display = "none";
+            }
+        }
+
+        function fillBreadcrumb(node, sunburst, breadcrumb)
+        {
+            let element = node;
+            let breadcrumbIndex = 0;
+            for(let element = node ; element != null ; element = element.parent)
+            {
+                let li = null;
+                if(breadcrumb.children.length <= breadcrumbIndex)
+                {
+                    li = document.createElement("li");
+                    li.addEventListener("click", (ev) => onNodeClicked(ev.target.node, sunburst, breadcrumb));
+                    breadcrumb.appendChild(li);
+                }
+                else
+                {
+                    li = breadcrumb.children[breadcrumbIndex];
+                }
+                li.style.display = "initial"
+                li.textContent = element.name;
+                li.style.backgroundColor = element.color;
+                li.node = element;
+                breadcrumbIndex++;
+            }
+            while(breadcrumbIndex < breadcrumb.children.length)
+            {
+                breadcrumb.children[breadcrumbIndex].style.display = "none";
+                breadcrumb.children[breadcrumbIndex++].innerText = "";
+            }
+        }
+
+        function addFilterListener()
+        {
+            const filterInput = document.getElementById('filter-input');
+            const filterButton = document.getElementById('filter-button');
+            filterInput.addEventListener("keyup", function(event)
+            {
+                if (event.key === "Enter")
+                    filter(filterInput.value);
+            });
+            filterButton.addEventListener("click", function(event)
+            {
+                filter(filterInput.value);
+            });
+        }
+
+        function filter(value)
+        {
+            let regexp = new RegExp(value);
+            let filteredDiff = value.length > 0
+                ? diff.filter(line => regexp.test(line))
+                : diff;
+            parseDiffFile(filteredDiff);
+        }
+    </script>
+</body>
+</html>
