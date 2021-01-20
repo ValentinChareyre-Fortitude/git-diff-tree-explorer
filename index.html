@@ -156,6 +156,24 @@
         width: 40%;
     }
 
+    #folders summary, details > div {
+        display: flex;
+        align-items: center;
+        border-radius: 2px;
+    }
+
+    details > div {
+        padding-right: 20px;
+    }
+
+    #folders summary:hover, #folders div:hover {
+        background-color: rgba(0, 0, 0, 0.1);
+    }
+
+    #folders .folder-name {
+        flex: 1 1 auto;
+    }
+
     details, details > div {
         margin-left: 4px;
         padding-left: 20px;
@@ -164,6 +182,40 @@
 
     #folders > details details, details > div {
         border-left: 1px solid black;
+    }
+
+    .change {
+        display: inline-block;
+        text-align: center;
+        line-height: 20px;
+        width: 20px;
+        height: 20px;
+        border-radius: 5px;
+        color: white;
+        margin-left: 2px;
+        -moz-user-select: none;
+        -webkit-user-select: none;
+        opacity: 50%;
+    }
+
+    .change.change-add {
+        background-color: green;
+    }
+
+    .change.change-delete {
+        background-color: #c01313;
+    }
+
+    .change.change-modify {
+        background-color: #cebb0e;
+    }
+
+    .change.change-rename {
+        background-color: #1394cf;
+    }
+
+    #folders summary:hover .change, #folders div:hover .change {
+        opacity: 100;
     }
 
     #help-container {
@@ -242,7 +294,7 @@
             <p>
                 Open a terminal and type the following command in the directory of your versionned project
             </p>
-            <pre><code>git diff-tree --name-only -r &lt;branch-name&gt; &lt;branch-name&gt; &gt; diff.txt</code></pre>
+            <pre><code>git diff-tree --name-status -r &lt;branch-name&gt; &lt;branch-name&gt; &gt; diff.txt</code></pre>
             <p>
                 This command will save the content of the <a href="https://git-scm.com/docs/git-diff-tree">git diff-tree</a> in the file called diff.txt
             </p>
@@ -359,9 +411,7 @@
             }
             else
             {
-                let div = document.createElement("div");
-                div.innerText = tree.name;
-                parent.appendChild(div);
+                createFileName(tree, parent);
             }
         }
 
@@ -386,7 +436,12 @@
         function createFolderName(node, parent)
         {
             let summary = document.createElement("summary");
-            summary.innerText = `${node.name} (${node.value} files)`;
+            let span = document.createElement("span");
+            span.classList.add("folder-name");
+            span.innerText = `${node.name} (${node.value} files)`
+            summary.appendChild(span);
+            if(node.changes.length > 0)
+                createChangeTags(node.changes, summary);
             parent.appendChild(summary);
 
             return summary;
@@ -401,44 +456,103 @@
             visibilityToggle.addEventListener("change", ev =>
             {
                 node.visible = ev.target.checked;
-                RecalculateValues(node);
+                recalculateValues(node);
                 addSunburst(tree, document.getElementById("sunburst"));
             });
 
             parent.appendChild(visibilityToggle);
         }
 
-        function RecalculateValues(node)
+        function createFileName(node, parent)
+        {
+            let div = document.createElement("div");
+            let span = document.createElement("span");
+            span.classList.add("folder-name");
+            span.innerText = node.name;
+            div.appendChild(span);
+            if(node.changes.length > 0)
+                createChangeTags(node.changes, div);
+            parent.appendChild(div);
+        }
+
+        function createChangeTags(changes, parent)
+        {
+            for(let change of changes)
+            {
+                let span = document.createElement("span");
+                span.classList.add("change");
+                span.innerText = change;
+                switch(change)
+                {
+                    case "A": span.classList.add("change-add");    span.title = "Added"; break;
+                    case "D": span.classList.add("change-delete"); span.title = "Deleted"; break;
+                    case "R": span.classList.add("change-rename"); span.title = "Renamed"; break;
+                    case "M": span.classList.add("change-modify"); span.title = "Modified"; break;
+                    default: continue;
+                }
+                parent.appendChild(span);
+            }
+        }
+
+        function recalculateValues(node)
         {
             if(typeof node.parent === "undefined")
                 return;
 
             node.parent.value = node.parent.children.reduce((sum, element) => sum + (element.visible ? element.value : 0), 0);
-            RecalculateValues(node.parent);
+            recalculateValues(node.parent);
         }
 
         function buildTree(diff)
         {
-            let tree = { name: "Project", children: [], color: "transparent", visible: true };
+            let tree = { name: "Project", children: [], color: "transparent", visible: true, changes: [] };
             for(let lineIndex = 0 ; lineIndex < diff.length ; ++lineIndex)
             {
                 let node = tree;
-                let fileSystemEntries = diff[lineIndex].split('/');
+                let fileDiff = diff[lineIndex].split('\t');
+                let change = fileDiff.length > 1 ? fileDiff[0] : null; // Added (A), Copied (C), Deleted (D), Modified (M), Renamed (R)
+                let fileSystemEntries = (fileDiff.length > 1 ? fileDiff[1] : fileDiff[0]).split('/');
 
                 for(let entryIndex = 0 ; entryIndex < fileSystemEntries.length ; ++entryIndex)
                 {
                     let child = node.children.find((c) => c.name == fileSystemEntries[entryIndex]);
                     if(typeof child === 'undefined')
                     {
-                        child = { name: fileSystemEntries[entryIndex], children: [], value: 0, parent: node, depth: entryIndex, visible: true, color: "transparent" };
+                        child = { name: fileSystemEntries[entryIndex], children: [], value: 0, parent: node, depth: entryIndex, visible: true, color: "transparent", changes: [] };
                         node.children.push(child);
                     }
                     child.value++;
+                    if(entryIndex == fileSystemEntries.length - 1)
+                    {
+                        if(change != null)
+                        {
+                            child.changes = [change];
+                            updateChangesInParents(node);
+                        }
+                    }
                     node = child;
                 }
             }
             tree.value = tree.children.reduce((sum, element) => sum + element.value, 0);
             return tree;
+        }
+
+        function updateChangesInParents(node)
+        {
+            node.changes = node.children.reduce((changes, child) =>
+            {
+                for(let change of child.changes)
+                {
+                    if(change != '' && changes.includes(change) == false)
+                        changes.push(change);
+                }
+                return changes;
+            }, node.changes);
+            
+            if(typeof node.parent !== "undefined")
+            {
+                updateChangesInParents(node.parent);
+            }
         }
 
         function colorTree(tree, minHue, maxHue)
