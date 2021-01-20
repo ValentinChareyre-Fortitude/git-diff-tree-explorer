@@ -17,9 +17,9 @@
     }
 
     header {
-        display: flex;
-        flex-direction: row;
-        justify-content: space-between;
+        display: grid;
+        grid-template-columns: 40% auto 40%;
+        grid-template-areas: " title filter upload";
         align-items: center;
         border-bottom: #ddd solid 2px;
     }
@@ -29,6 +29,7 @@
     }
 
     header h1 {
+        grid-area: title;
         text-transform: uppercase;
         display: flex;
         align-items: center;
@@ -51,13 +52,15 @@
     }
 
     #filter-container {
+        grid-area: filter;
         position: relative;
+        justify-self: stretch;
     }
 
     #filter-container input {
         border: 1px solid #666;
         height: 25px;
-        width: 300px;
+        width: 100%;
         border-radius: 10px;
     }
 
@@ -67,8 +70,10 @@
     }
 
     #filter-container button {
+        grid-area: filter;
         position: absolute;
         right: 5px;
+        top: 0;
         border: none;
         background-color: transparent;
         font-family: monospace;
@@ -89,6 +94,11 @@
         border: #333333 solid 2px;
         border-radius: 10px;
         padding: 10px 20px;
+    }
+
+    #upload-container {
+        grid-area: upload;
+        justify-self: end;
     }
 
     #upload-container input {
